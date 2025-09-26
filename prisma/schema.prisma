@@ -18,7 +18,6 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relacionamentos com Workspaces
   workspaceMembers  WorkspaceMember[]
   createdWorkspaces Workspace[]       @relation("WorkspaceCreator")
   sentInvites       WorkspaceInvite[] @relation("InviteSender")
@@ -34,21 +33,21 @@ model Workspace {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relacionamentos
   creatorId String
   creator   User   @relation("WorkspaceCreator", fields: [creatorId], references: [id], onDelete: Cascade)
 
-  members WorkspaceMember[]
-  invites WorkspaceInvite[]
+  members      WorkspaceMember[]
+  invites      WorkspaceInvite[]
+  bankAccounts BankAccount[]
 
   @@map("workspaces")
 }
 
 enum WorkspaceRole {
-  OWNER // Criador do workspace - controle total
-  ADMIN // Administrador - pode gerenciar membros e configurações
-  MEMBER // Membro comum - pode usar todas as funcionalidades financeiras
-  VIEWER // Visualizador - apenas leitura
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
 
   @@map("workspace_roles")
 }
@@ -59,48 +58,59 @@ model WorkspaceMember {
   joinedAt  DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  // Relacionamentos
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // Um usuário pode estar em um workspace apenas uma vez
   @@unique([userId, workspaceId])
   @@map("workspace_members")
 }
 
 enum InviteStatus {
-  PENDING // Convite enviado, aguardando resposta
-  ACCEPTED // Convite aceito
-  DECLINED // Convite recusado
-  EXPIRED // Convite expirado
-  CANCELLED // Convite cancelado pelo remetente
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CANCELLED
 
   @@map("invite_statuses")
 }
 
 model WorkspaceInvite {
   id         String        @id @default(uuid())
-  email      String // Email da pessoa convidada
-  role       WorkspaceRole @default(MEMBER) // Role que será atribuído quando aceitar
+  email      String
+  role       WorkspaceRole @default(MEMBER)
   status     InviteStatus  @default(PENDING)
-  token      String        @unique // Token único para aceitar o convite
-  message    String? // Mensagem personalizada do convite
-  expiresAt  DateTime // Data de expiração do convite
+  token      String        @unique
+  message    String?
+  expiresAt  DateTime
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
-  acceptedAt DateTime? // Quando foi aceito
+  acceptedAt DateTime?
 
-  // Relacionamentos
   senderId    String
   sender      User      @relation("InviteSender", fields: [senderId], references: [id], onDelete: Cascade)
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // Usuário que aceitou o convite (pode ser diferente do email se a pessoa criar uma conta nova)
   acceptedById String?
   acceptedBy   User?   @relation("InviteReceiver", fields: [acceptedById], references: [id], onDelete: SetNull)
 
   @@map("workspace_invites")
+}
+
+model BankAccount {
+  id                  String   @id @default(uuid())
+  name                String
+  initialBalanceCents Int?
+  agency              String?
+  account             String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("bank_accounts")
 }

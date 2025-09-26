@@ -22,6 +22,7 @@ async function bootstrap() {
     .setVersion('1.0')
     .addTag('Auth', 'Endpoints de autenticação')
     .addTag('Workspaces', 'Gerenciamento de workspaces')
+    .addTag('Accounts', 'Contas bancárias dentro de workspaces')
     .addTag('Invites', 'Sistema de convites para workspaces')
     .addTag('Members', 'Gerenciamento de membros')
     .addBearerAuth(
