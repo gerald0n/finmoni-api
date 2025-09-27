@@ -1,133 +1,161 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
 
 @Injectable()
 export class AccountsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(private prisma: PrismaService) { }
 
-    // Cria uma conta bancária no workspace, garantindo que o usuário é membro
-    async create(workspaceId: string, userId: string, dto: CreateAccountDto) {
-        // Verifica se o usuário é membro do workspace
-        const member = await this.prisma.workspaceMember.findFirst({
-            where: { workspaceId, userId },
+    async create(
+        workspaceId: string,
+        createAccountDto: CreateAccountDto,
+        userId: string,
+    ) {
+        await this.checkUserMembership(userId, workspaceId);
+
+        const { name, initialBalance, agency, account } = createAccountDto;
+
+        return this.prisma.bankAccount.create({
+            data: {
+                name,
+                initialBalanceCents: initialBalance ? this.toCents(initialBalance) : null,
+                agency,
+                account,
+                workspaceId,
+                ownerId: userId
+            },
+            include: {
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
         });
-
-        if (!member) {
-            throw new NotFoundException('Workspace não encontrado ou sem acesso');
-        }
-
-        // Converter initialBalance string -> centavos (int)
-        const data: {
-            name: string;
-            workspaceId: string;
-            initialBalanceCents?: number | null;
-            agency?: string;
-            account?: string;
-        } = { name: dto.name, workspaceId };
-
-        if (dto.initialBalance !== undefined) {
-            data.initialBalanceCents = dto.initialBalance === '' ? null : this.toCents(dto.initialBalance);
-        }
-        if (dto.agency !== undefined) data.agency = dto.agency;
-        if (dto.account !== undefined) data.account = dto.account;
-
-        const account = await this.prisma.bankAccount.create({
-            data,
-        });
-
-        return account;
     }
 
     async list(workspaceId: string, userId: string) {
-        await this.ensureMember(workspaceId, userId);
+        await this.checkUserMembership(userId, workspaceId);
+
         return this.prisma.bankAccount.findMany({
             where: { workspaceId },
+            include: {
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
             orderBy: { createdAt: 'desc' },
         });
     }
 
     async getOne(workspaceId: string, accountId: string, userId: string) {
-        await this.ensureMember(workspaceId, userId);
+        await this.checkUserMembership(userId, workspaceId);
+
         const account = await this.prisma.bankAccount.findFirst({
             where: { id: accountId, workspaceId },
+            include: {
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
         });
-        if (!account) throw new NotFoundException('Conta não encontrada');
+
+        if (!account) {
+            throw new NotFoundException('Conta bancária não encontrada');
+        }
+
         return account;
     }
 
     async update(
         workspaceId: string,
         accountId: string,
+        updateAccountDto: UpdateAccountDto,
         userId: string,
-        dto: UpdateAccountDto,
     ) {
-        await this.ensureMember(workspaceId, userId);
+        await this.checkUserMembership(userId, workspaceId);
 
-        // garante escopo ao workspace
-        const exists = await this.prisma.bankAccount.findFirst({
+        const existingAccount = await this.prisma.bankAccount.findFirst({
             where: { id: accountId, workspaceId },
-            select: { id: true },
         });
-        if (!exists) throw new NotFoundException('Conta não encontrada');
 
-        const data: {
-            name?: string;
-            initialBalanceCents?: number | null;
-            agency?: string | null;
-            account?: string | null;
-        } = {};
+        if (!existingAccount) {
+            throw new NotFoundException('Conta bancária não encontrada');
+        }
 
-        if (dto.name !== undefined) data.name = dto.name;
-        if (dto.agency !== undefined) data.agency = dto.agency ?? null;
-        if (dto.account !== undefined) data.account = dto.account ?? null;
-        if (dto.initialBalance !== undefined)
-            data.initialBalanceCents = dto.initialBalance === '' ? null : this.toCents(dto.initialBalance);
+        const { name, initialBalance, agency, account } = updateAccountDto;
+        const updateData: any = {};
 
-        return this.prisma.bankAccount.update({ where: { id: accountId }, data });
+        if (name !== undefined) updateData.name = name;
+        if (initialBalance !== undefined) {
+            updateData.initialBalanceCents = this.toCents(initialBalance);
+        }
+        if (agency !== undefined) updateData.agency = agency;
+        if (account !== undefined) updateData.account = account;
+
+        return this.prisma.bankAccount.update({
+            where: { id: accountId },
+            data: updateData,
+            include: {
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
+        });
     }
 
     async remove(workspaceId: string, accountId: string, userId: string) {
-        await this.ensureMember(workspaceId, userId);
+        await this.checkUserMembership(userId, workspaceId);
 
-        // garante escopo
-        const exists = await this.prisma.bankAccount.findFirst({
+        const account = await this.prisma.bankAccount.findFirst({
             where: { id: accountId, workspaceId },
-            select: { id: true },
         });
-        if (!exists) throw new NotFoundException('Conta não encontrada');
 
-        await this.prisma.bankAccount.delete({ where: { id: accountId } });
-        return { message: 'Conta removida com sucesso' };
+        if (!account) {
+            throw new NotFoundException('Conta bancária não encontrada');
+        }
+
+        await this.prisma.bankAccount.delete({
+            where: { id: accountId },
+        });
+
+        return { message: 'Conta bancária removida com sucesso' };
     }
 
-    // Helpers
-    private async ensureMember(workspaceId: string, userId: string) {
-        const member = await this.prisma.workspaceMember.findFirst({
-            where: { workspaceId, userId },
-            select: { id: true },
+    private async checkUserMembership(userId: string, workspaceId: string) {
+        const membership = await this.prisma.workspaceMember.findFirst({
+            where: { userId, workspaceId },
         });
-        if (!member) throw new NotFoundException('Workspace não encontrado ou sem acesso');
+
+        if (!membership) {
+            throw new ForbiddenException('Usuário não é membro do workspace');
+        }
     }
 
     private toCents(value: string): number {
-        const trimmed = value.trim();
-        const dot = trimmed.lastIndexOf('.');
-        const comma = trimmed.lastIndexOf(',');
-        let normalized = trimmed;
-        if (dot === -1 && comma === -1) {
-            // apenas dígitos
-            normalized = trimmed;
-        } else if (comma > dot) {
-            // vírgula é decimal: remove pontos (milhar) e troca vírgula por ponto
-            normalized = trimmed.replace(/\./g, '').replace(/,/g, '.');
-        } else {
-            // ponto é decimal: remove vírgulas (milhar) mantém ponto
-            normalized = trimmed.replace(/,/g, '');
+        const normalized = value.trim().replace(',', '.');
+
+        const numberValue = parseFloat(normalized);
+
+        if (isNaN(numberValue)) {
+            throw new Error('Valor inválido para conversão');
         }
-        const num = Number(normalized);
-        if (Number.isNaN(num)) throw new NotFoundException('Valor monetário inválido');
-        return Math.round(num * 100);
+
+        return Math.round(numberValue * 100);
     }
 }

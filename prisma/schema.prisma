@@ -22,6 +22,7 @@ model User {
   createdWorkspaces Workspace[]       @relation("WorkspaceCreator")
   sentInvites       WorkspaceInvite[] @relation("InviteSender")
   receivedInvites   WorkspaceInvite[] @relation("InviteReceiver")
+  ownedBankAccounts BankAccount[]
 
   @@map("users")
 }
@@ -106,11 +107,13 @@ model BankAccount {
   initialBalanceCents Int?
   agency              String?
   account             String?
+  workspaceId         String
+  ownerId             String
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner     User      @relation(fields: [ownerId], references: [id])
 
   @@map("bank_accounts")
 }
