@@ -18,11 +18,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspaceMembers  WorkspaceMember[]
-  createdWorkspaces Workspace[]       @relation("WorkspaceCreator")
-  sentInvites       WorkspaceInvite[] @relation("InviteSender")
-  receivedInvites   WorkspaceInvite[] @relation("InviteReceiver")
-  ownedBankAccounts BankAccount[]
+  workspaceMembers    WorkspaceMember[]
+  createdWorkspaces   Workspace[]       @relation("WorkspaceCreator")
+  sentInvites         WorkspaceInvite[] @relation("InviteSender")
+  receivedInvites     WorkspaceInvite[] @relation("InviteReceiver")
+  ownedBankAccounts   BankAccount[]
+  createdTransactions Transaction[]     @relation("TransactionCreator")
 
   @@map("users")
 }
@@ -112,8 +113,34 @@ model BankAccount {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  owner     User      @relation(fields: [ownerId], references: [id])
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner        User          @relation(fields: [ownerId], references: [id])
+  transactions Transaction[]
 
   @@map("bank_accounts")
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+
+  @@map("transaction_types")
+}
+
+model Transaction {
+  id          String          @id @default(uuid())
+  title       String
+  description String?
+  amountCents Int
+  date        DateTime
+  type        TransactionType
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  bankAccountId String
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  createdById   String
+  createdBy     User        @relation("TransactionCreator", fields: [createdById], references: [id])
+
+  @@map("transactions")
 }
